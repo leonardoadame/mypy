@@ -38,9 +38,7 @@ class ErrorCode:
         return f"<ErrorCode {self.code}>"
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, ErrorCode):
-            return False
-        return self.code == other.code
+        return False if not isinstance(other, ErrorCode) else self.code == other.code
 
     def __hash__(self) -> int:
         return hash((self.code,))

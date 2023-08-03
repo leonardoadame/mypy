@@ -91,11 +91,7 @@ class Options:
         # When cross compiling to emscripten, we need to rely on MACHDEP because
         # sys.platform is the host build platform, not emscripten.
         MACHDEP = sysconfig.get_config_var("MACHDEP")
-        if MACHDEP == "emscripten":
-            self.platform = MACHDEP
-        else:
-            self.platform = sys.platform
-
+        self.platform = MACHDEP if MACHDEP == "emscripten" else sys.platform
         self.custom_typing_module: str | None = None
         self.custom_typeshed_dir: str | None = None
         # The abspath() version of the above, we compute it once as an optimization.

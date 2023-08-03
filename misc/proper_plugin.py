@@ -39,9 +39,7 @@ class ProperTypePlugin(Plugin):
             return isinstance_proper_hook
         if fullname == "mypy.types.get_proper_type":
             return proper_type_hook
-        if fullname == "mypy.types.get_proper_types":
-            return proper_types_hook
-        return None
+        return proper_types_hook if fullname == "mypy.types.get_proper_types" else None
 
 
 def isinstance_proper_hook(ctx: FunctionContext) -> Type:
@@ -129,8 +127,7 @@ def is_dangerous_target(typ: ProperType) -> bool:
 
 def proper_type_hook(ctx: FunctionContext) -> Type:
     """Check if this get_proper_type() call is not redundant."""
-    arg_types = ctx.arg_types[0]
-    if arg_types:
+    if arg_types := ctx.arg_types[0]:
         arg_type = get_proper_type(arg_types[0])
         proper_type = get_proper_type_instance(ctx)
         if is_proper_subtype(arg_type, UnionType.make_union([NoneTyp(), proper_type])):
@@ -143,8 +140,7 @@ def proper_type_hook(ctx: FunctionContext) -> Type:
 
 def proper_types_hook(ctx: FunctionContext) -> Type:
     """Check if this get_proper_types() call is not redundant."""
-    arg_types = ctx.arg_types[0]
-    if arg_types:
+    if arg_types := ctx.arg_types[0]:
         arg_type = arg_types[0]
         proper_type = get_proper_type_instance(ctx)
         item_type = UnionType.make_union([NoneTyp(), proper_type])
