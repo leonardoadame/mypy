@@ -106,9 +106,7 @@ class _NodeEvaluator(ExpressionVisitor[object]):
 
     def visit_list_expr(self, o: mypy.nodes.ListExpr) -> object:
         items = [item.accept(self) for item in o.items]
-        if all(item is not UNKNOWN for item in items):
-            return items
-        return UNKNOWN
+        return items if all(item is not UNKNOWN for item in items) else UNKNOWN
 
     def visit_dict_expr(self, o: mypy.nodes.DictExpr) -> object:
         items = [
@@ -121,15 +119,11 @@ class _NodeEvaluator(ExpressionVisitor[object]):
 
     def visit_tuple_expr(self, o: mypy.nodes.TupleExpr) -> object:
         items = [item.accept(self) for item in o.items]
-        if all(item is not UNKNOWN for item in items):
-            return tuple(items)
-        return UNKNOWN
+        return tuple(items) if all(item is not UNKNOWN for item in items) else UNKNOWN
 
     def visit_set_expr(self, o: mypy.nodes.SetExpr) -> object:
         items = [item.accept(self) for item in o.items]
-        if all(item is not UNKNOWN for item in items):
-            return set(items)
-        return UNKNOWN
+        return set(items) if all(item is not UNKNOWN for item in items) else UNKNOWN
 
     def visit_index_expr(self, o: mypy.nodes.IndexExpr) -> object:
         return UNKNOWN

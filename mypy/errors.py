@@ -326,9 +326,8 @@ class Errors:
     def simplify_path(self, file: str) -> str:
         if self.options.show_absolute_path:
             return os.path.abspath(file)
-        else:
-            file = os.path.normpath(file)
-            return remove_path_prefix(file, self.ignore_prefix)
+        file = os.path.normpath(file)
+        return remove_path_prefix(file, self.ignore_prefix)
 
     def set_file(
         self, file: str, module: str | None, options: Options, scope: Scope | None = None
@@ -419,11 +418,7 @@ class Errors:
         if column is None:
             column = -1
         if end_column is None:
-            if column == -1:
-                end_column = -1
-            else:
-                end_column = column + 1
-
+            end_column = -1 if column == -1 else column + 1
         if file is None:
             file = self.file
         if offset:
@@ -586,12 +581,10 @@ class Errors:
             return False
         if len(self.error_info_map) >= self.options.many_errors_threshold:
             return True
-        if (
+        return (
             sum(len(errors) for errors in self.error_info_map.values())
             >= self.options.many_errors_threshold
-        ):
-            return True
-        return False
+        )
 
     def report_hidden_errors(self, info: ErrorInfo) -> None:
         message = (
@@ -700,8 +693,10 @@ class Errors:
                 unused_codes_message = f"[{', '.join(sorted(unused_ignored_codes))}]"
             message = f'Unused "type: ignore{unused_codes_message}" comment'
             for unused in unused_ignored_codes:
-                narrower = set(used_ignored_codes) & codes.sub_code_map[unused]
-                if narrower:
+                if (
+                    narrower := set(used_ignored_codes)
+                    & codes.sub_code_map[unused]
+                ):
                     message += f", use narrower [{', '.join(narrower)}] instead of [{unused}] code"
             # Don't use report since add_error_info will ignore the error!
             info = ErrorInfo(
@@ -750,8 +745,7 @@ class Errors:
                 continue
 
             codes_hint = ""
-            ignored_codes = sorted(set(used_ignored_lines[line]))
-            if ignored_codes:
+            if ignored_codes := sorted(set(used_ignored_lines[line])):
                 codes_hint = f' (consider "type: ignore[{", ".join(ignored_codes)}]" instead)'
 
             message = f'"type: ignore" comment without error code{codes_hint}'
@@ -811,11 +805,10 @@ class Errors:
         if self.file in self.ignored_files:
             # Errors ignored, so no point generating fancy messages
             return True
-        for _watcher in self._watchers:
-            if _watcher._filter is True and _watcher._filtered is None:
-                # Errors are filtered
-                return True
-        return False
+        return any(
+            _watcher._filter is True and _watcher._filtered is None
+            for _watcher in self._watchers
+        )
 
     def raise_error(self, use_stdout: bool = True) -> NoReturn:
         """Raise a CompileError with the generated messages.
@@ -956,10 +949,7 @@ class Errors:
                     fmt = "{}:{}: note: In module imported here"
                     if i < last:
                         fmt = "{}:{}: note: ... from here"
-                    if i > 0:
-                        fmt += ","
-                    else:
-                        fmt += ":"
+                    fmt += "," if i > 0 else ":"
                     # Remove prefix to ignore from path (if present) to
                     # simplify path.
                     path = remove_path_prefix(path, self.ignore_prefix)
@@ -993,47 +983,34 @@ class Errors:
                                 None,
                             )
                         )
-                else:
-                    if e.type is None:
-                        result.append(
-                            (
-                                file,
-                                -1,
-                                -1,
-                                -1,
-                                -1,
-                                "note",
-                                f'In function "{e.function_or_member}":',
-                                e.allow_dups,
-                                None,
-                            )
-                        )
-                    else:
-                        result.append(
-                            (
-                                file,
-                                -1,
-                                -1,
-                                -1,
-                                -1,
-                                "note",
-                                'In member "{}" of class "{}":'.format(
-                                    e.function_or_member, e.type
-                                ),
-                                e.allow_dups,
-                                None,
-                            )
-                        )
-            elif e.type != prev_type:
-                if e.type is None:
+                elif e.type is None:
                     result.append(
-                        (file, -1, -1, -1, -1, "note", "At top level:", e.allow_dups, None)
+                        (
+                            file,
+                            -1,
+                            -1,
+                            -1,
+                            -1,
+                            "note",
+                            f'In function "{e.function_or_member}":',
+                            e.allow_dups,
+                            None,
+                        )
                     )
                 else:
                     result.append(
-                        (file, -1, -1, -1, -1, "note", f'In class "{e.type}":', e.allow_dups, None)
+                        (
+                            file,
+                            -1,
+                            -1,
+                            -1,
+                            -1,
+                            "note",
+                            f'In member "{e.function_or_member}" of class "{e.type}":',
+                            e.allow_dups,
+                            None,
+                        )
                     )
-
             if isinstance(e.message, ErrorMessage):
                 result.append(
                     (
@@ -1124,8 +1101,8 @@ class Errors:
 
     def remove_duplicates(self, errors: list[ErrorTuple]) -> list[ErrorTuple]:
         """Remove duplicates from a sorted error list."""
-        res: list[ErrorTuple] = []
         i = 0
+        res: list[ErrorTuple] = []
         while i < len(errors):
             dup = False
             # Use slightly special formatting for member conflicts reporting.
@@ -1141,11 +1118,13 @@ class Errors:
                 while j >= 0 and errors[j][0] == errors[i][0] and errors[j][1] == errors[i][1]:
                     if (
                         errors[j][5] == errors[i][5]
-                        and
-                        # Allow duplicate notes in overload conflicts reporting.
-                        not (
-                            (errors[i][5] == "note" and errors[i][6].strip() in allowed_duplicates)
-                            or (errors[i][6].strip().startswith("def ") and conflicts_notes)
+                        and (
+                            errors[i][5] != "note"
+                            or errors[i][6].strip() not in allowed_duplicates
+                        )
+                        and (
+                            not errors[i][6].strip().startswith("def ")
+                            or not conflicts_notes
                         )
                         and errors[j][6] == errors[i][6]
                     ):  # ignore column
@@ -1220,10 +1199,7 @@ def report_internal_error(
 
     # Compute file:line prefix for official-looking error messages.
     if file:
-        if line:
-            prefix = f"{file}:{line}: "
-        else:
-            prefix = f"{file}: "
+        prefix = f"{file}:{line}: " if line else f"{file}: "
     else:
         prefix = ""
 
@@ -1255,14 +1231,7 @@ def report_internal_error(
     # If requested, print traceback, else print note explaining how to get one.
     if options.raise_exceptions:
         raise err
-    if not options.show_traceback:
-        if not options.pdb:
-            print(
-                "{}: note: please use --show-traceback to print a traceback "
-                "when reporting a bug".format(prefix),
-                file=stderr,
-            )
-    else:
+    if options.show_traceback:
         tb = traceback.extract_stack()[:-2]
         tb2 = traceback.extract_tb(sys.exc_info()[2])
         print("Traceback (most recent call last):")
@@ -1271,6 +1240,11 @@ def report_internal_error(
         print(f"{type(err).__name__}: {err}", file=stdout)
         print(f"{prefix}: note: use --pdb to drop into pdb", file=stderr)
 
+    elif not options.pdb:
+        print(
+            f"{prefix}: note: please use --show-traceback to print a traceback when reporting a bug",
+            file=stderr,
+        )
     # Exit.  The caller has nothing more to say.
     # We use exit code 2 to signal that this is no ordinary error.
     raise SystemExit(2)

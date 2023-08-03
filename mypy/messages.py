@@ -413,9 +413,7 @@ class MessageBuilder:
             # TODO: Fix this consistently in format_type
             if isinstance(original_type, CallableType) and original_type.is_type_obj():
                 self.fail(
-                    "The type {} is not generic and not indexable".format(
-                        format_type(original_type, self.options)
-                    ),
+                    f"The type {format_type(original_type, self.options)} is not generic and not indexable",
                     context,
                 )
             else:
@@ -427,9 +425,7 @@ class MessageBuilder:
         elif member == "__setitem__":
             # Indexed set.
             self.fail(
-                "Unsupported target for indexed assignment ({})".format(
-                    format_type(original_type, self.options)
-                ),
+                f"Unsupported target for indexed assignment ({format_type(original_type, self.options)})",
                 context,
                 code=codes.INDEX,
             )
@@ -449,10 +445,10 @@ class MessageBuilder:
         else:
             # The non-special case: a missing ordinary attribute.
             extra = ""
-            if member == "__iter__":
-                extra = " (not iterable)"
-            elif member == "__aiter__":
+            if member == "__aiter__":
                 extra = " (not async iterable)"
+            elif member == "__iter__":
+                extra = " (not iterable)"
             if not self.are_type_names_disabled():
                 failed = False
                 if isinstance(original_type, Instance) and original_type.type.names:
@@ -483,21 +479,14 @@ class MessageBuilder:
                             matches = []  # Avoid misleading suggestion
                         if matches:
                             self.fail(
-                                '{} has no attribute "{}"; maybe {}?{}'.format(
-                                    format_type(original_type, self.options),
-                                    member,
-                                    pretty_seq(matches, "or"),
-                                    extra,
-                                ),
+                                f'{format_type(original_type, self.options)} has no attribute "{member}"; maybe {pretty_seq(matches, "or")}?{extra}',
                                 context,
                                 code=codes.ATTR_DEFINED,
                             )
                             failed = True
                 if not failed:
                     self.fail(
-                        '{} has no attribute "{}"{}'.format(
-                            format_type(original_type, self.options), member, extra
-                        ),
+                        f'{format_type(original_type, self.options)} has no attribute "{member}"{extra}',
                         context,
                         code=codes.ATTR_DEFINED,
                     )
@@ -512,9 +501,7 @@ class MessageBuilder:
                 ):
                     typ_format = '"None"'
                 self.fail(
-                    'Item {} of {} has no attribute "{}"{}'.format(
-                        typ_format, orig_type_format, member, extra
-                    ),
+                    f'Item {typ_format} of {orig_type_format} has no attribute "{member}"{extra}',
                     context,
                     code=codes.UNION_ATTR,
                 )
@@ -524,18 +511,13 @@ class MessageBuilder:
                     typ_fmt, bound_fmt = format_type_distinctly(typ, bound, options=self.options)
                     original_type_fmt = format_type(original_type, self.options)
                     self.fail(
-                        "Item {} of the upper bound {} of type variable {} has no "
-                        'attribute "{}"{}'.format(
-                            typ_fmt, bound_fmt, original_type_fmt, member, extra
-                        ),
+                        f'Item {typ_fmt} of the upper bound {bound_fmt} of type variable {original_type_fmt} has no attribute "{member}"{extra}',
                         context,
                         code=codes.UNION_ATTR,
                     )
             else:
                 self.fail(
-                    '{} has no attribute "{}"{}'.format(
-                        format_type(original_type, self.options), member, extra
-                    ),
+                    f'{format_type(original_type, self.options)} has no attribute "{member}"{extra}',
                     context,
                     code=codes.ATTR_DEFINED,
                 )

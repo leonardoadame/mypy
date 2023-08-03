@@ -26,8 +26,9 @@ import requests
 def check_state() -> None:
     if not os.path.isfile("pyproject.toml") or not os.path.isdir("mypy"):
         sys.exit("error: The current working directory must be the mypy repository root")
-    out = subprocess.check_output(["git", "status", "-s", os.path.join("mypy", "typeshed")])
-    if out:
+    if out := subprocess.check_output(
+        ["git", "status", "-s", os.path.join("mypy", "typeshed")]
+    ):
         # If there are local changes under mypy/typeshed, they would be lost.
         sys.exit('error: Output of "git status -s mypy/typeshed" must be empty')
 
@@ -79,9 +80,9 @@ def get_origin_owner() -> str:
     )
     assert match is not None, f"Couldn't identify origin's owner: {output!r}"
     assert (
-        match.group("repo").removesuffix(".git") == "mypy"
-    ), f'Unexpected repo: {match.group("repo")!r}'
-    return match.group("owner")
+        match["repo"].removesuffix(".git") == "mypy"
+    ), f'Unexpected repo: {match["repo"]!r}'
+    return match["owner"]
 
 
 def create_or_update_pull_request(*, title: str, body: str, branch_name: str) -> None:

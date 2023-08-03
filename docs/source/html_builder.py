@@ -23,8 +23,9 @@ class MypyHTMLBuilder(StandaloneHTMLBuilder):
     def _verify_error_codes(self) -> None:
         from mypy.errorcodes import error_codes
 
-        missing_error_codes = {c for c in error_codes if f"code-{c}" not in self._ref_to_doc}
-        if missing_error_codes:
+        if missing_error_codes := {
+            c for c in error_codes if f"code-{c}" not in self._ref_to_doc
+        }:
             raise ValueError(
                 f"Some error codes are not documented: {', '.join(sorted(missing_error_codes))}"
             )

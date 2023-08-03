@@ -47,11 +47,9 @@ def get_target_type(
             # is also a legal value of T.
             if all(any(mypy.subtypes.is_same_type(v, v1) for v in values) for v1 in p_type.values):
                 return type
-        matching = []
-        for value in values:
-            if mypy.subtypes.is_subtype(type, value):
-                matching.append(value)
-        if matching:
+        if matching := [
+            value for value in values if mypy.subtypes.is_subtype(type, value)
+        ]:
             best = matching[0]
             # If there are more than one matching value, we select the narrowest
             for match in matching[1:]:

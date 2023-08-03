@@ -310,10 +310,7 @@ def normpath(path: str, options: Options) -> str:
     # TODO: Could we always use relpath?  (A worry in non-bazel
     # mode would be that a moved file may change its full module
     # name without changing its size, mtime or hash.)
-    if options.bazel:
-        return os.path.relpath(path)
-    else:
-        return os.path.abspath(path)
+    return os.path.relpath(path) if options.bazel else os.path.abspath(path)
 
 
 class CacheMeta(NamedTuple):
@@ -534,7 +531,7 @@ def find_config_file_line_number(path: str, section: str, setting_name: str) -> 
     Return -1 if can't determine the line unambiguously.
     """
     in_desired_section = False
-    try:
+    with contextlib.suppress(OSError):
         results = []
         with open(path, encoding="UTF-8") as f:
             for i, line in enumerate(f):
@@ -546,8 +543,6 @@ def find_config_file_line_number(path: str, section: str, setting_name: str) -> 
                     results.append(i + 1)
         if len(results) == 1:
             return results[0]
-    except OSError:
-        pass
     return -1
 
 
@@ -685,9 +680,7 @@ class BuildManager:
         # for efficient lookup
         self.shadow_map: dict[str, str] = {}
         if self.options.shadow_file is not None:
-            self.shadow_map = {
-                source_file: shadow_file for (source_file, shadow_file) in self.options.shadow_file
-            }
+            self.shadow_map = dict(self.options.shadow_file)
         # a mapping from each file being typechecked to its possible shadow file
         self.shadow_equivalence_map: dict[str, str | None] = {}
         self.plugin = plugin
@@ -713,7 +706,7 @@ class BuildManager:
         if self.options.dump_build_stats:
             print("Stats:")
             for key, value in sorted(self.stats_summary().items()):
-                print(f"{key + ':':24}{value}")
+                print(f"{f'{key}:':24}{value}")
 
     def use_fine_grained_cache(self) -> bool:
         return self.cache_enabled and self.options.use_fine_grained_cache
@@ -745,10 +738,7 @@ class BuildManager:
         (Bazel's distributed cache doesn't like filesystem metadata to
         end up in output files.)
         """
-        if self.options.bazel:
-            return 0
-        else:
-            return int(self.metastore.getmtime(path))
+        return 0 if self.options.bazel else int(self.metastore.getmtime(path))
 
     def all_imported_modules_in_file(self, file: MypyFile) -> list[tuple[int, str, int]]:
         """Find all reachable import statements in a file.
@@ -769,7 +759,7 @@ class BuildManager:
                 rel -= 1
             if rel != 0:
                 file_id = ".".join(file_id.split(".")[:-rel])
-            new_id = file_id + "." + imp.id if imp.id else file_id
+            new_id = f"{file_id}.{imp.id}" if imp.id else file_id
 
             if not new_id:
                 self.errors.set_file(file.path, file.name, self.options)
@@ -798,7 +788,7 @@ class BuildManager:
                     # Also add any imported names that are submodules.
                     pri = import_priority(imp, PRI_MED)
                     for name, __ in imp.names:
-                        sub_id = cur_id + "." + name
+                        sub_id = f"{cur_id}.{name}"
                         if self.is_module(sub_id):
                             res.append((pri, sub_id, imp.line))
                         else:
@@ -1177,8 +1167,7 @@ def _cache_dir_prefix(options: Options) -> str:
         return os.curdir
     cache_dir = options.cache_dir
     pyversion = options.python_version
-    base = os.path.join(cache_dir, "%d.%d" % pyversion)
-    return base
+    return os.path.join(cache_dir, "%d.%d" % pyversion)
 
 
 def add_catch_all_gitignore(target_dir: str) -> None:
@@ -1187,12 +1176,10 @@ def add_catch_all_gitignore(target_dir: str) -> None:
     No-op if the .gitignore already exists.
     """
     gitignore = os.path.join(target_dir, ".gitignore")
-    try:
+    with contextlib.suppress(FileExistsError):
         with open(gitignore, "x") as f:
             print("# Automatically created by mypy", file=f)
             print("*", file=f)
-    except FileExistsError:
-        pass
 
 
 def exclude_from_backups(target_dir: str) -> None:
@@ -1201,7 +1188,7 @@ def exclude_from_backups(target_dir: str) -> None:
     If the CACHEDIR.TAG file exists the function is a no-op.
     """
     cachedir_tag = os.path.join(target_dir, "CACHEDIR.TAG")
-    try:
+    with contextlib.suppress(FileExistsError):
         with open(cachedir_tag, "x") as f:
             f.write(
                 """Signature: 8a477f597d28d172789f06886806bc55
@@ -1209,17 +1196,15 @@ def exclude_from_backups(target_dir: str) -> None:
 # For information about cache directory tags see https://bford.info/cachedir/
 """
             )
-    except FileExistsError:
-        pass
 
 
 def create_metastore(options: Options) -> MetadataStore:
     """Create the appropriate metadata store."""
-    if options.sqlite_cache:
-        mds: MetadataStore = SqliteMetadataStore(_cache_dir_prefix(options))
-    else:
-        mds = FilesystemMetadataStore(_cache_dir_prefix(options))
-    return mds
+    return (
+        SqliteMetadataStore(_cache_dir_prefix(options))
+        if options.sqlite_cache
+        else FilesystemMetadataStore(_cache_dir_prefix(options))
+    )
 
 
 def get_cache_names(id: str, path: str, options: Options) -> tuple[str, str, str | None]:
@@ -1248,14 +1233,11 @@ def get_cache_names(id: str, path: str, options: Options) -> tuple[str, str, str
         root = _cache_dir_prefix(options)
         return (os.path.relpath(pair[0], root), os.path.relpath(pair[1], root), None)
     prefix = os.path.join(*id.split("."))
-    is_package = os.path.basename(path).startswith("__init__.py")
-    if is_package:
+    if is_package := os.path.basename(path).startswith("__init__.py"):
         prefix = os.path.join(prefix, "__init__")
 
-    deps_json = None
-    if options.cache_fine_grained:
-        deps_json = prefix + ".deps.json"
-    return (prefix + ".meta.json", prefix + ".data.json", deps_json)
+    deps_json = f"{prefix}.deps.json" if options.cache_fine_grained else None
+    return f"{prefix}.meta.json", f"{prefix}.data.json", deps_json
 
 
 def find_cache_meta(id: str, path: str, manager: BuildManager) -> CacheMeta | None:
@@ -1330,9 +1312,7 @@ def find_cache_meta(id: str, path: str, manager: BuildManager) -> CacheMeta | No
             for key in sorted(set(cached_options) | set(current_options)):
                 if cached_options.get(key) != current_options.get(key):
                     manager.trace(
-                        "    {}: {} != {}".format(
-                            key, cached_options.get(key), current_options.get(key)
-                        )
+                        f"    {key}: {cached_options.get(key)} != {current_options.get(key)}"
                     )
         return None
     if manager.old_plugins_snapshot and manager.plugins_snapshot:
@@ -1484,9 +1464,7 @@ def validate_meta(
                 meta_str = json.dumps(meta_dict, separators=(",", ":"))
             meta_json, _, _ = get_cache_names(id, path, manager.options)
             manager.log(
-                "Updating mtime for {}: file {}, meta {}, mtime {}".format(
-                    id, path, meta_json, meta.mtime
-                )
+                f"Updating mtime for {id}: file {path}, meta {meta_json}, mtime {meta.mtime}"
             )
             t1 = time.time()
             manager.metastore.write(meta_json, meta_str)  # Ignore errors, just an optimization.
@@ -1579,10 +1557,8 @@ def write_cache(
         # Remove apparently-invalid cache files.
         # (This is purely an optimization.)
         for filename in [data_json, meta_json]:
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(filename)
-            except OSError:
-                pass
         # Still return the interface hash we computed.
         return interface_hash, None
 
@@ -1970,9 +1946,9 @@ class State:
             self.suppressed_set = set(self.suppressed)
             all_deps = self.dependencies + self.suppressed
             assert len(all_deps) == len(self.meta.dep_prios)
-            self.priorities = {id: pri for id, pri in zip(all_deps, self.meta.dep_prios)}
+            self.priorities = dict(zip(all_deps, self.meta.dep_prios))
             assert len(all_deps) == len(self.meta.dep_lines)
-            self.dep_line_map = {id: line for id, line in zip(all_deps, self.meta.dep_lines)}
+            self.dep_line_map = dict(zip(all_deps, self.meta.dep_lines))
             if temporary:
                 self.load_tree(temporary=True)
             if not manager.use_fine_grained_cache():
@@ -2152,9 +2128,7 @@ class State:
                     # tests have predictable output.)
                     raise CompileError(
                         [
-                            "mypy: can't read file '{}': {}".format(
-                                self.path, os.strerror(ioerr.errno)
-                            )
+                            f"mypy: can't read file '{self.path}': {os.strerror(ioerr.errno)}"
                         ],
                         module_with_blocker=self.id,
                     ) from ioerr
@@ -2211,8 +2185,7 @@ class State:
 
     def parse_inline_configuration(self, source: str) -> None:
         """Check for inline mypy: options directive and parse them."""
-        flags = get_mypy_comments(source)
-        if flags:
+        if flags := get_mypy_comments(source):
             changes, config_errors = parse_mypy_comments(flags, self.options)
             self.options = self.options.apply_changes(changes)
             self.manager.errors.set_file(self.xpath, self.id, self.options)
@@ -2431,11 +2404,12 @@ class State:
         for dep in sorted(extra):
             if dep not in self.manager.modules:
                 continue
-            if dep not in self.suppressed_set and dep not in self.manager.missing_modules:
-                self.add_dependency(dep)
-                self.priorities[dep] = PRI_INDIRECT
-            elif dep not in self.suppressed_set and dep in self.manager.missing_modules:
-                self.suppress_dependency(dep)
+            if dep not in self.suppressed_set:
+                if dep not in self.manager.missing_modules:
+                    self.add_dependency(dep)
+                    self.priorities[dep] = PRI_INDIRECT
+                else:
+                    self.suppress_dependency(dep)
 
     def compute_fine_grained_deps(self) -> dict[str, set[str]]:
         assert self.tree is not None
@@ -2544,7 +2518,7 @@ class State:
             if options.ignore_missing_imports:
                 continue
             line = self.dep_line_map.get(dep, 1)
-            try:
+            with contextlib.suppress(ModuleNotFound, CompileError):
                 if dep in self.ancestors:
                     state: State | None = None
                     ancestor: State | None = self
@@ -2559,13 +2533,6 @@ class State:
                     caller_line=line,
                     ancestor_for=ancestor,
                 )
-            except (ModuleNotFound, CompileError):
-                # Swallow up any ModuleNotFounds or CompilerErrors while generating
-                # a diagnostic. CompileErrors may get generated in
-                # fine-grained mode when an __init__.py is deleted, if a module
-                # that was in that package has targets reprocessed before
-                # it is renamed.
-                pass
 
     def dependency_priorities(self) -> list[int]:
         return [self.priorities.get(dep, PRI_HIGH) for dep in self.dependencies + self.suppressed]
